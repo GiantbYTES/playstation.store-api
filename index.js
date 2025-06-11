@@ -3,6 +3,9 @@ import express from "express";
 import pg from "pg";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = express();
 const port = 3000;
@@ -14,61 +17,128 @@ const db = new pg.Client({
   port: 5432,
 });
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 db.connect();
 
-async function get_games_url(){
-    const url = "https://store.playstation.com/en-us/pages/browse/";
-    const { data } = await axios.get(url);
-    const $ = cheerio.load(data);
-    const urls = [];
-    
-    $('[class*="psw-l-w-1/6@laptop"]').each((i, el) =>{
-        const game_url = $(el).find('a.psw-link.psw-content-link').attr('href');
-        urls.push({game_url});
-    });
-    return urls;
-}
-async function get_data_from_gamepage(url)
-{
-  const { data } = await axios.get(url);
-  const $ = cheerio.load(data);
-  const item = {};
-  item.title = $('[data-qa="mfe-game-title#name"]').text().trim();
-  // item.name = $('[class*="psw-m-b-5 psw-t-title-l psw-t-size-7 psw-l-line-break-word"]').text().trim();
-  item.num_of_ratings = $('[data-qa="mfe-star-rating#overall-rating#total-ratings"]').text().trim().replace("ratings","").trim();
-  item.rating_val = $('[data-qa="mfe-game-title#average-rating"]').text().trim();
-  item.sale_price = $('[data-qa="mfeCtaMain#offer0#finalPrice"]').text().trim();
-  item.original_price = $('[data-qa="mfeCtaMain#offer0#originalPrice"]').text().trim();
-  item.genres = $('[data-qa="gameInfo#releaseInformation#genre-value"]').text().trim();
-  item.platforms = $('[data-qa="gameInfo#releaseInformation#platform-value"]').text().trim();
-  
-  if (item.original_price=='') 
-  {
-    item.original_price = item.sale_price;
-    item.sale_price = '';
+app.get("/", async (req, res) => {
+  try {
+    const { data: games, error } = await supabase
+      .from("games")
+      .select("*");
+
+    if (error) throw error;
+
+    console.log(games); // for debugging
+    res.json(games);    // send data to browser
+  } catch (err) {
+    console.error("Error fetching from Supabase:", err.message);
+    res.status(500).json({ error: "Failed to fetch data from Supabase" });
   }
-  // item.push(name,num_of_ratings,rating_val,title,sale_price,original_price,genres);
-  console.log(item);
-  return item;
-  // const genres = ;
-  
-  console.log(genres);
-  
-}
-app.get("/", async (req, res) => 
-{
-    const urr = await get_games_url();
-    urr.forEach(async (result) => await get_data_from_gamepage("https://store.playstation.com"+result.game_url));
-    // await get_data_from_gamepage("https://store.playstation.com"+urr[0].game_url);
-    // console.log(urr);
-    const result = await db.query("SELECT * FROM games");
-    let games = [];
-    result.rows.forEach((game) => 
-        {
-            games.push(game);
-        })
-    // console.log(result.rows);
 });
+app.get("/filter", async (req, res) => {
+  try {
+    let query = supabase.from("games").select("*");
+
+    const {
+      rating,
+      rating_from,
+      rating_until,
+      num_of_ratings_from,
+      num_of_ratings_until,
+      on_sale,
+      original_price_min,
+      original_price_max,
+      final_price_min,
+      final_price_max,
+      platform_ps4,
+      platform_ps5,
+      genres,
+	  sort,
+	  order_by
+    } = req.query;
+
+    if (rating_from) {
+      query = query.gte("rating", parseFloat(rating_from));
+    }
+    if (rating_until) {
+      query = query.lte("rating", parseFloat(rating_until));
+    }
+    if (num_of_ratings_from) {
+      query = query.gte("num_ratings", parseInt(num_of_ratings_from));
+    }
+    if (num_of_ratings_until) {
+      query = query.lte("num_ratings", parseInt(num_of_ratings_until));
+    }
+    if (original_price_min) {
+      query = query.gte("original_price", parseFloat(original_price_min));
+    }
+    if (original_price_max) {
+      query = query.lte("original_price", parseFloat(original_price_max));
+    }
+    if (on_sale && on_sale != "false") {
+      query = query.not("sale_price", "is", null); // sale_price IS NOT NULL
+    }
+    if (final_price_min)
+    {
+      query = query.gte("final_price", parseFloat(final_price_min));
+    }
+    if (final_price_max)
+    {
+      query = query.lte("final_price", parseFloat(final_price_max));
+    }
+
+    // Handle platform filtering
+    const platforms = [];
+    if (platform_ps4 === "true") platforms.push("PS4");
+    if (platform_ps5 === "true") platforms.push("PS5");
+    if (platforms.length > 0) {
+      query = query.overlaps("platform", platforms); // platform && ARRAY[...]
+    }
+
+    // Handle genres filtering
+    if (genres) {
+      const genres_arr = Array.isArray(genres)
+        ? genres
+        : genres.split(",").map((g) => g.trim());
+      query = query.overlaps("genres", genres_arr); // genres && ARRAY[...]
+    }
+
+    // Order by rating descending
+	if (sort && order_by)
+	{
+		query = query.order(sort, { ascending: order_by === "asc" });
+	}
+	else if(sort)
+	{
+		query = query.order(sort, { ascending: false });
+	}
+	else
+	{
+		query = query.order("num_ratings", { ascending: false });
+	}
+    
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Supabase filter query error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Unexpected filter error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
