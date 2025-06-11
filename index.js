@@ -8,14 +8,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-const port = 3000;
-const db = new pg.Client({
-  user: "postgres",
-  host: "localhost",
-  database: "Games",
-  password: "1",
-  port: 5432,
-});
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -25,7 +17,6 @@ const supabase = createClient(
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-db.connect();
 
 app.get("/", async (req, res) => {
   try {
@@ -137,9 +128,4 @@ app.get("/filter", async (req, res) => {
     console.error("Unexpected filter error:", err);
     res.status(500).json({ error: "Server error" });
   }
-});
-
-
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
 });
