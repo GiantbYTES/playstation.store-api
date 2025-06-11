@@ -1,5 +1,4 @@
 import express from "express";
-// import pool from './db';
 import { createClient } from '@supabase/supabase-js';
 import pg from "pg";
 import axios from "axios";
@@ -15,17 +14,10 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-const db = new pg.Client({
-  user: "postgres",
-  host: "localhost",
-  database: "Games",
-  password: "1",
-  port: 5432,
-});
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-db.connect();
+
 async function get_games_url(){
     let index = 1;
     const urls = [];
