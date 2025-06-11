@@ -1,5 +1,4 @@
 {
-{
   "name": "playstation.store-api",
   "version": "1.0.0",
   "description": "This project is an unofficial API that fetches and exposes data from the PlayStation Store.",
@@ -11,9 +10,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.50.0",
     "axios": "^1.9.0",
     "body-parser": "^1.20.2",
     "cheerio": "^1.0.0",
+    "dotenv": "^16.5.0",
     "ejs": "^3.1.9",
     "express": "^5.1.0",
     "pg": "^8.11.3"
