@@ -18,7 +18,7 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-app.get("/", async (req, res) => {
+app.get("/all", async (req, res) => {
   try {
     const { data: games, error } = await supabase
       .from("games")
